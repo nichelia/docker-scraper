@@ -23,7 +23,8 @@ class NHSChoices(scrapy.Spider):
     'CONCURRENT_REQUESTS_PER_DOMAIN' : 2,
     'AUTOTHROTTLE_ENABLED' : True,
     'AUTOTHROTTLE_START_DELAY' : 1,
-    'AUTOTHROTTLE_MAX_DELAY' : 3
+    'AUTOTHROTTLE_MAX_DELAY' : 3,
+    'LOG_LEVEL': 'INFO'
   }
 
 
@@ -60,7 +61,7 @@ class NHSChoices(scrapy.Spider):
 
     condition_urls_pattern = '/conditions/'
     condition_urls_xpath_selector = (
-      '//div[@id="ctl00_PlaceHolderMain\_BodyMap_ConditionsByAlphabet"] \
+      '//div[@id="ctl00_PlaceHolderMain_BodyMap_ConditionsByAlphabet"] \
        //li/a/@href')
 
     condition_urls_to_crawl = (response.xpath(condition_urls_xpath_selector)
