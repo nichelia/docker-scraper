@@ -17,8 +17,7 @@ class NHSChoices(scrapy.Spider):
     'nhs.uk'
   ]
   start_urls = [ # define urls to start crawling from.
-    # 'http://www.nhs.uk/Conditions/Pages/hub.aspx',
-    'http://www.nhs.uk/Conditions/Pages/BodyMap.aspx?Index=A'
+    'http://www.nhs.uk/Conditions/Pages/hub.aspx'
   ]
   custom_settings = { # override wide project configuration settings.
     'CONCURRENT_REQUESTS_PER_DOMAIN' : 2,
@@ -28,48 +27,65 @@ class NHSChoices(scrapy.Spider):
   }
 
 
-  def parse_(self, response):
+  def parse(self, response):
     """
       Default callback to process downloaded responses.
 
-      Crawls urls given in the 'Browse by index' section (alphabetical order).
-      For each response a custom parser is used.
+      Crawls the urls defined in start_urls, in our case the
+      NHS choices conditions website. Aims to extract url links
+      from the 'Browse by index' section.
     """
 
     index_urls_xpath_selector = '//div[@id="haz-mod1"]//li/a/@href'
 
-    index_urls_to_crawl = response.xpath(index_urls_xpath_selector).extract()
+    index_urls_to_crawl = (response.xpath(index_urls_xpath_selector)
+                                   .extract())
 
-    if index_urls_to_crawl is None:
+    if not index_urls_to_crawl:
+      self.logger.info('Failed to find URLs to follow at %s, xpath used: %s',
+                        response.url, index_urls_xpath_selector)
       return
 
     for index_url in index_urls_to_crawl:
       yield response.follow(index_url, callback=self.parse_index)
 
 
-  def parse(self, response):
-    # page = response.url.split("?")[1]
-    # print page
-    # filename = 'nhsbot-%s.html' % page
-    # with open(filename, 'wb') as f:
-    #     f.write(response.body)
+  def parse_index(self, response):
+    """
+    Custom parser that aims to extract url links
+    from the alphabetical index page.
+    Limits the links to the ones interested in
+    (url pattern ../conditions/..)
+    """
 
-    condition_urls_xpath_selector = '//div[@id="ctl00_PlaceHolderMain_BodyMap_ConditionsByAlphabet"]\
-                                     //li/a/@href'
+    condition_urls_pattern = '/conditions/'
+    condition_urls_xpath_selector = (
+      '//div[@id="ctl00_PlaceHolderMain\_BodyMap_ConditionsByAlphabet"] \
+       //li/a/@href')
 
-    condition_urls_to_crawl = response.xpath(condition_urls_xpath_selector).extract()
+    condition_urls_to_crawl = (response.xpath(condition_urls_xpath_selector)
+                                       .extract())
 
-    if condition_urls_to_crawl is None:
+    if not condition_urls_to_crawl:
+      self.logger.info('Failed to find URLs to follow at %s, xpath used: %s',
+                        response.url, condition_urls_xpath_selector)
       return
 
     for condition_url in condition_urls_to_crawl:
-      yield response.follow(condition_url, callback=self.parse_condition)
+      if condition_url.startswith(condition_urls_pattern):
+        yield response.follow(condition_url, callback=self.parse_condition)
+      else:
+        self.logger.info('Ignoring url %s, to satisfy url pattern: %s',
+                          condition_url, condition_urls_pattern)
+
 
   def parse_condition(self, response):
-    # page = response.url.split("/")[-1]
-    # filename = 'nhsbot-%s.html' % page
-    # with open(filename, 'wb') as f:
-    #     f.write(response.body)
+    """
+    Custom parser that aims to scrape required
+    information from the condition page.
+    Information extracted (if found):
+    title, metadata, content, last reviewed date.
+    """
 
     item = NhsbotItem()
 
@@ -90,6 +106,9 @@ class NHSChoices(scrapy.Spider):
     title = response.xpath(title_xpath_selector).extract_first()
     if title:
       item['title'] = title
+    else:
+      self.logger.info('Could not find a title for %s, xpath used: %s',
+                          url, title_xpath_selector)
 
     # Extract metadata elements on the page.
     meta = dict()
@@ -106,6 +125,9 @@ class NHSChoices(scrapy.Spider):
 
     if meta:
       item['meta'] = meta
+    else:
+      self.logger.info('Could not find metadata for %s, xpath used: %s',
+                          url, 'multiple: //meta, @name, @content')
 
 
     # Extract page content.
@@ -121,6 +143,10 @@ class NHSChoices(scrapy.Spider):
 
     if content:
       item['content'] = ' '.join(content)
+    else:
+      self.logger.info('Could not find content for %s, xpath used: %s',
+                          url, 'multiple '+content_xpath_selector+' '
+                          +content_text_xpath_selector)
 
     # Extract last reviewed date.
     last_reviewed_pattern = '%d/%m/%Y'
@@ -129,11 +155,22 @@ class NHSChoices(scrapy.Spider):
 
     last_reviewed_date = response.xpath(last_reviewed_xpath_selector).extract_first()
 
-    try:
-      last_reviewed_epoch_date = int( time.mktime( time.strptime(last_reviewed_date, last_reviewed_pattern) ) )
-      if last_reviewed_epoch_date:
-        item['last_reviewed_epoch_date'] = last_reviewed_epoch_date
-    except:
-      pass
+    if last_reviewed_date:
+      try:
+        last_reviewed_epoch_date = int( time.mktime( time.strptime(last_reviewed_date, last_reviewed_pattern) ) )
+        if last_reviewed_epoch_date:
+          item['last_reviewed_epoch_date'] = last_reviewed_epoch_date
+        else:
+          self.logger.info('Failed to convert extracted last reviewed date (%s) \
+                          to an epoch representation. Date pattern used %s',
+                            last_reviewed_date, last_reviewed_pattern)
+      except:
+        self.logger.info('Failed to convert extracted last reviewed date (%s) \
+                          to an epoch representation. Date pattern used %s',
+                            last_reviewed_date, last_reviewed_pattern)
+        pass
+    else:
+      self.logger.info('Could not find last reviewed date for %s, xpath used: %s',
+                  url, last_reviewed_xpath_selector)
 
     return item
