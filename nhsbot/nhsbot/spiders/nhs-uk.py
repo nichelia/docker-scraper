@@ -1,5 +1,7 @@
-import scrapy, time
+import scrapy
+import time
 
+from datetime import datetime
 from nhsbot.items import NhsbotItem
 
 class NHSChoices(scrapy.Spider):
@@ -61,8 +63,8 @@ class NHSChoices(scrapy.Spider):
 
     condition_urls_pattern = '/conditions/'
     condition_urls_xpath_selector = (
-      '//div[@id="ctl00_PlaceHolderMain_BodyMap_ConditionsByAlphabet"] \
-       //li/a/@href')
+      '//div[@id="ctl00_PlaceHolderMain_BodyMap_ConditionsByAlphabet"]' \
+      '//li/a/@href')
 
     condition_urls_to_crawl = (response.xpath(condition_urls_xpath_selector)
                                        .extract())
@@ -109,11 +111,12 @@ class NHSChoices(scrapy.Spider):
       item['title'] = title
     else:
       self.logger.info('Could not find a title for %s, xpath used: %s',
-                          url, title_xpath_selector)
+                        url, title_xpath_selector)
 
     # Extract metadata elements on the page.
     meta = dict()
     meta_elems = response.xpath('//meta')
+    date_issued_pattern = '%Y-%m-%d'
 
     for meta_elem in meta_elems:
       key = meta_elem.xpath('@name').extract_first()
@@ -122,19 +125,31 @@ class NHSChoices(scrapy.Spider):
       if not key or not value:
         continue
 
-      meta[key] = value
+      # Make sure that date metadata is extracted as UTC ISO8601 format
+      if key == 'DC.date.issued':
+        self.logger.info('Found date metadata %s, try to convert to UTC' \
+                         'ISO8601 format with pattern %s',
+                          key, date_issued_pattern)
+        try:
+          parsed_date = datetime.strptime(value,date_issued_pattern)
+          if parsed_date:
+            meta[key] = parsed_date.isoformat() + 'Z'
+        except:
+          pass
+      else:
+        meta[key] = value
 
     if meta:
       item['meta'] = meta
     else:
       self.logger.info('Could not find metadata for %s, xpath used: %s',
-                          url, 'multiple: //meta, @name, @content')
+                        url, 'multiple: //meta, @name, @content')
 
 
     # Extract page content.
-    content_xpath_selector = '//div[contains(@class,"main-content healthaz-content")] \
-                               /div[@id="webZoneLeft"]/ \
-                               preceding-sibling::node()'
+    content_xpath_selector = '//div[contains(@class,"main-content healthaz-content")]' \
+                             '/div[@id="webZoneLeft"]' \
+                             '/preceding-sibling::node()'
     content_text_xpath_selector = 'descendant-or-self::*/text()'
 
 
@@ -146,32 +161,34 @@ class NHSChoices(scrapy.Spider):
       item['content'] = ' '.join(content)
     else:
       self.logger.info('Could not find content for %s, xpath used: %s',
-                          url, 'multiple '+content_xpath_selector+' '
-                          +content_text_xpath_selector)
+                        url, 'multiple '+content_xpath_selector+' '+
+                        content_text_xpath_selector)
 
     # Extract last reviewed date.
     last_reviewed_pattern = '%d/%m/%Y'
-    last_reviewed_xpath_selector = '//div[contains(@class,"review-date")] \
-                                    //span[contains(@class,"review-pad")]/text()'
+    last_reviewed_xpath_selector = '//div[contains(@class,"review-date")]' \
+                                   '//span[contains(@class,"review-pad")]/text()'
 
     last_reviewed_date = response.xpath(last_reviewed_xpath_selector).extract_first()
 
     if last_reviewed_date:
       try:
-        last_reviewed_epoch_date = int( time.mktime( time.strptime(last_reviewed_date, last_reviewed_pattern) ) )
+        last_reviewed_epoch_date = int( time.mktime( 
+                                         time.strptime(
+                                          last_reviewed_date, last_reviewed_pattern)))
         if last_reviewed_epoch_date:
           item['last_reviewed_epoch_date'] = last_reviewed_epoch_date
         else:
-          self.logger.info('Failed to convert extracted last reviewed date (%s) \
-                          to an epoch representation. Date pattern used %s',
+          self.logger.info('Failed to convert extracted last reviewed date (%s)' \
+                           'to an epoch representation. Date pattern used %s',
                             last_reviewed_date, last_reviewed_pattern)
       except:
-        self.logger.info('Failed to convert extracted last reviewed date (%s) \
-                          to an epoch representation. Date pattern used %s',
-                            last_reviewed_date, last_reviewed_pattern)
+        self.logger.info('Failed to convert extracted last reviewed date (%s)' \
+                         'to an epoch representation. Date pattern used %s',
+                          last_reviewed_date, last_reviewed_pattern)
         pass
     else:
       self.logger.info('Could not find last reviewed date for %s, xpath used: %s',
-                  url, last_reviewed_xpath_selector)
+                        url, last_reviewed_xpath_selector)
 
     return item
