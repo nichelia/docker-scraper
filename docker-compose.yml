@@ -11,6 +11,7 @@ scrapy:
   image: nichelia/scraper:alpha
   command: bash
   volumes:
+    - ./data:/var/lib/scrapyd
     - .:/code
   working_dir: /code
   restart: always
