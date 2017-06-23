@@ -59,4 +59,4 @@ VOLUME /etc/scrapyd/ /var/lib/scrapyd/
 # Expose web GUI
 EXPOSE 6800
 
-CMD [ "scrapyd" ]
+CMD [ "scrapyd", "--pidfile=" ]
