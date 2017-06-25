@@ -61,6 +61,7 @@ class NHSChoices(scrapy.Spider):
     (url pattern ../conditions/..)
     """
 
+    domain = 'nhs.uk'
     condition_urls_pattern = '/conditions/'
     condition_urls_xpath_selector = (
       '//div[@id="ctl00_PlaceHolderMain_BodyMap_ConditionsByAlphabet"]' \
@@ -75,20 +76,60 @@ class NHSChoices(scrapy.Spider):
       return
 
     for condition_url in condition_urls_to_crawl:
-      if condition_url.startswith(condition_urls_pattern):
-        yield response.follow(condition_url, callback=self.parse_condition)
+      if ( condition_url.lower().startswith(condition_urls_pattern) or
+           (domain+condition_urls_pattern) in condition_url.lower() ):
+        yield response.follow(condition_url, callback=self.parse_condition_articles)
       else:
         self.logger.info('Ignoring url %s, to satisfy url pattern: %s',
                           condition_url, condition_urls_pattern)
 
 
+  def parse_condition_articles(self, response):
+    """
+      Custom parser that aims to extract article
+      url links from the condition page.
+      Limits the links to the ones interested in
+      (url pattern ../conditions/..)
+    """
+
+    # Make sure to crawl the first active page
+    # e.g. Introduction 
+    yield self.parse_condition(response)
+
+    domain = 'nhs.uk'
+    article_urls_pattern = '/conditions/'
+    article_urls_xpath_selector = ('//div[@id="ctl00_PlaceHolderMain_articles"]' \
+                                   '//li/span/a/@href')
+
+    article_urls_to_crawl = (response.xpath(article_urls_xpath_selector)
+                                     .extract())
+
+    if not article_urls_to_crawl:
+      self.logger.info('Failed to find URLs to follow at %s, xpath used: %s',
+                        response.url, article_urls_xpath_selector)
+      return
+
+    for article_url in article_urls_to_crawl:
+      if ( article_url.lower().startswith(article_urls_pattern) or 
+           (domain+article_urls_pattern) in article_url.lower() ):
+        yield response.follow(article_url, callback=self.parse_condition)
+      else:
+        self.logger.info('Ignoring url %s, to satisfy url pattern: %s',
+                          article_url, article_urls_pattern)
+
+
   def parse_condition(self, response):
     """
-    Custom parser that aims to scrape required
-    information from the condition page.
-    Information extracted (if found):
-    title, metadata, content, last reviewed date.
+      Custom parser that aims to scrape required
+      information from the condition page.
+      Information extracted (if found):
+      title, metadata, content, last reviewed date.
     """
+    
+    if 'beta.nhs.uk' in response.url:
+      self.logger.info('Ignoring url %s, as it is a beta page.',
+                        response.url)
+      return
 
     item = NhsbotItem()
 
@@ -153,9 +194,9 @@ class NHSChoices(scrapy.Spider):
     content_text_xpath_selector = 'descendant-or-self::*/text()'
 
 
-    content = (response.xpath(content_xpath_selector)
-                       .xpath(content_text_xpath_selector)
-                       .extract())
+    content = ( response.xpath(content_xpath_selector)
+                        .xpath(content_text_xpath_selector)
+                        .extract() )
 
     if content:
       item['content'] = ' '.join(content)
@@ -169,13 +210,14 @@ class NHSChoices(scrapy.Spider):
     last_reviewed_xpath_selector = '//div[contains(@class,"review-date")]' \
                                    '//span[contains(@class,"review-pad")]/text()'
 
-    last_reviewed_date = response.xpath(last_reviewed_xpath_selector).extract_first()
+    last_reviewed_date = response.xpath(last_reviewed_xpath_selector)
+                                 .extract_first()
 
     if last_reviewed_date:
       try:
         last_reviewed_epoch_date = int( time.mktime( 
                                          time.strptime(
-                                          last_reviewed_date, last_reviewed_pattern)))
+                                          last_reviewed_date, last_reviewed_pattern)) )
         if last_reviewed_epoch_date:
           item['last_reviewed_epoch_date'] = last_reviewed_epoch_date
         else:
