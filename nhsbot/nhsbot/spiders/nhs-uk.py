@@ -210,8 +210,8 @@ class NHSChoices(scrapy.Spider):
     last_reviewed_xpath_selector = '//div[contains(@class,"review-date")]' \
                                    '//span[contains(@class,"review-pad")]/text()'
 
-    last_reviewed_date = response.xpath(last_reviewed_xpath_selector)
-                                 .extract_first()
+    last_reviewed_date = ( response.xpath(last_reviewed_xpath_selector)
+                                   .extract_first() )
 
     if last_reviewed_date:
       try:
