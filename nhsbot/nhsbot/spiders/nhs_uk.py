@@ -22,11 +22,14 @@ class NHSChoices(scrapy.Spider):
     'http://www.nhs.uk/Conditions/Pages/hub.aspx'
   ]
   custom_settings = { # override wide project configuration settings.
+    'LOG_LEVEL': 'INFO',
+    # Avoid getting banned
     'CONCURRENT_REQUESTS_PER_DOMAIN' : 2,
     'AUTOTHROTTLE_ENABLED' : True,
     'AUTOTHROTTLE_START_DELAY' : 1,
     'AUTOTHROTTLE_MAX_DELAY' : 3,
-    'LOG_LEVEL': 'INFO'
+    'COOKIES_ENABLED': False,
+    'DOWNLOAD_DELAY ': 2
   }
 
 
