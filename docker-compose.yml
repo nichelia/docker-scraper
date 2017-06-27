@@ -1,5 +1,5 @@
 scrapyd:
-  image: nichelia/scraper:alpha
+  image: nichelia/scraper
   ports:
     - "6800:6800"
   volumes:
@@ -8,7 +8,7 @@ scrapyd:
   restart: always
 
 scrapy:
-  image: nichelia/scraper:alpha
+  image: nichelia/scraper
   command: bash
   volumes:
     - ./data:/var/lib/scrapyd
